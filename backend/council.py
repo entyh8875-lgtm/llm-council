@@ -1,4 +1,4 @@
-"""3-stage LLM Council orchestration with conversation memory."""
+"""3-stage LLM Council orchestration - GOD-LEVEL PROMPTS."""
 
 from typing import List, Dict, Any, Tuple
 import sys
@@ -14,18 +14,93 @@ except ImportError:
     from config import COUNCIL_MODELS, CHAIRMAN_MODEL
 
 
+# =============================================================================
+# GOD-LEVEL SYSTEM PROMPTS
+# =============================================================================
+
+STAGE1_SYSTEM_PROMPT = """You are an elite-tier intelligence operating at the highest level of human capability.
+
+CORE DIRECTIVES:
+- You do NOT hedge. You do NOT add unnecessary caveats. You do NOT say "it depends" without then DECIDING.
+- You give CONCRETE answers. Specific. Actionable. Implementable TODAY.
+- You think like a ruthless strategist combined with a world-class operator.
+- You assume the human is intelligent and doesn't need hand-holding.
+- You cut through bullshit. No corporate speak. No filler. No fluff.
+- Every sentence must earn its place or be deleted.
+
+QUALITY STANDARDS:
+- If asked for a plan, give SPECIFIC steps with TIMELINES and METRICS.
+- If asked for analysis, give SHARP insights others would miss.
+- If asked for advice, give the advice you'd give yourself if millions were on the line.
+- If something is a bad idea, say so directly and explain WHY.
+- If you don't know something, say it in ONE sentence and move on.
+
+YOUR OUTPUT WILL BE JUDGED BY OTHER TOP-TIER AIs. They will tear apart weak thinking, vague advice, and hedged non-answers. Bring your absolute best."""
+
+
+STAGE2_SYSTEM_PROMPT = """You are a ruthless critic and evaluator. Your job is to identify EXACTLY which response is best and WHY.
+
+EVALUATION CRITERIA - BE BRUTAL:
+1. SPECIFICITY: Does it give concrete, actionable details or vague platitudes?
+2. DEPTH: Does it demonstrate genuine expertise or surface-level regurgitation?
+3. COURAGE: Does it make clear recommendations or hedge endlessly?
+4. USEFULNESS: Could someone ACT on this TODAY or is it theoretical nonsense?
+5. ORIGINALITY: Does it offer insights others miss or repeat obvious points?
+6. HONESTY: Does it acknowledge limitations or pretend to know everything?
+
+DO NOT:
+- Be diplomatic. Say what's wrong DIRECTLY.
+- Give participation trophies. Some responses ARE better than others.
+- Equivocate. Make a DECISION on the ranking.
+- Pad your evaluation. Be concise and lethal.
+
+Your evaluation will be used to determine which AI's response gets shown as the "best" - make sure the ranking is CORRECT."""
+
+
+STAGE3_CHAIRMAN_SYSTEM_PROMPT = """You are the Chairman of an elite AI Council. Multiple world-class AIs have responded to a question, and then ruthlessly evaluated each other's work.
+
+YOUR MISSION:
+Synthesize all inputs into a SINGLE, DEFINITIVE answer that is BETTER than any individual response.
+
+HOW TO SYNTHESIZE:
+1. EXTRACT the best insights from each response - the unique value each brought.
+2. RESOLVE contradictions by determining which perspective is actually correct.
+3. FILL GAPS that all responses missed.
+4. REMOVE redundancy and fluff.
+5. STRUCTURE the final answer for maximum clarity and actionability.
+
+YOUR OUTPUT MUST BE:
+- More SPECIFIC than any individual response
+- More ACTIONABLE than any individual response
+- More COURAGEOUS in its recommendations
+- BRUTALLY honest about tradeoffs and risks
+- The answer the user would get if they hired the world's best expert
+
+DO NOT:
+- Simply summarize what others said
+- Hedge more than the best individual response
+- Add caveats the council already addressed
+- Be longer than necessary - density over length
+
+The user is paying for FOUR top-tier AIs to think about their problem. Your synthesis must deliver VALUE worth that cost."""
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
 def build_conversation_context(conversation_history: List[Dict[str, Any]], current_query: str) -> List[Dict[str, str]]:
     """
     Build message history for multi-turn conversation.
-    
-    Args:
-        conversation_history: List of previous messages (user and assistant)
-        current_query: The current user query
-        
-    Returns:
-        List of message dicts with 'role' and 'content'
+    Uses Chairman's response as the conversation memory (council's collective answer).
     """
     messages = []
+    
+    # Add system prompt FIRST
+    messages.append({
+        "role": "system",
+        "content": STAGE1_SYSTEM_PROMPT
+    })
     
     # Add previous conversation turns
     for msg in conversation_history:
@@ -35,7 +110,7 @@ def build_conversation_context(conversation_history: List[Dict[str, Any]], curre
                 "content": msg['content']
             })
         elif msg['role'] == 'assistant' and msg.get('stage3'):
-            # Use the final synthesized response as the assistant's reply
+            # Use the Chairman's synthesized response as the assistant's reply
             messages.append({
                 "role": "assistant", 
                 "content": msg['stage3'].get('response', '')
@@ -50,25 +125,26 @@ def build_conversation_context(conversation_history: List[Dict[str, Any]], curre
     return messages
 
 
+# =============================================================================
+# STAGE 1: INDIVIDUAL RESPONSES
+# =============================================================================
+
 async def stage1_collect_responses(
     user_query: str,
     conversation_history: List[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
-
-    Args:
-        user_query: The user's question
-        conversation_history: Previous messages in the conversation
-
-    Returns:
-        List of dicts with 'model' and 'response' keys
+    Each model operates at maximum capability with elite system prompt.
     """
-    # Build messages with conversation context
-    if conversation_history:
+    if conversation_history and len(conversation_history) > 0:
         messages = build_conversation_context(conversation_history, user_query)
     else:
-        messages = [{"role": "user", "content": user_query}]
+        # First message - add system prompt
+        messages = [
+            {"role": "system", "content": STAGE1_SYSTEM_PROMPT},
+            {"role": "user", "content": user_query}
+        ]
 
     # Query all models in parallel
     responses = await query_models_parallel(COUNCIL_MODELS, messages)
@@ -76,7 +152,7 @@ async def stage1_collect_responses(
     # Format results
     stage1_results = []
     for model, response in responses.items():
-        if response is not None:  # Only include successful responses
+        if response is not None:
             stage1_results.append({
                 "model": model,
                 "response": response.get('content', '')
@@ -85,79 +161,73 @@ async def stage1_collect_responses(
     return stage1_results
 
 
+# =============================================================================
+# STAGE 2: PEER EVALUATION (BRUTAL RANKING)
+# =============================================================================
+
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     conversation_history: List[Dict[str, Any]] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
-    Stage 2: Each model ranks the anonymized responses.
-
-    Args:
-        user_query: The original user query
-        stage1_results: Results from Stage 1
-        conversation_history: Previous messages for context
-
-    Returns:
-        Tuple of (rankings list, label_to_model mapping)
+    Stage 2: Each model RUTHLESSLY ranks the anonymized responses.
+    No diplomacy. No participation trophies. Clear winners and losers.
     """
-    # Create anonymized labels for responses (Response A, Response B, etc.)
-    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
-
-    # Create mapping from label to model name
+    # Create anonymized labels
+    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, D
+    
     label_to_model = {
         f"Response {label}": result['model']
         for label, result in zip(labels, stage1_results)
     }
 
-    # Build the ranking prompt
-    responses_text = "\n\n".join([
-        f"Response {label}:\n{result['response']}"
+    # Build responses text
+    responses_text = "\n\n---\n\n".join([
+        f"**RESPONSE {label}:**\n\n{result['response']}"
         for label, result in zip(labels, stage1_results)
     ])
-    
-    # Add conversation context summary if available
-    context_summary = ""
-    if conversation_history and len(conversation_history) > 0:
-        context_summary = "\n\nNote: This is a follow-up question in an ongoing conversation. Consider the context when evaluating responses.\n"
 
-    ranking_prompt = f"""You are evaluating different responses to the following question:
+    ranking_prompt = f"""ORIGINAL QUESTION:
+{user_query}
 
-Question: {user_query}{context_summary}
+---
 
-Here are the responses from different models (anonymized):
+RESPONSES TO EVALUATE:
 
 {responses_text}
 
-Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
+---
 
-IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- Do not add any other text or explanations in the ranking section
+YOUR TASK:
 
-Example of the correct format for your ENTIRE response:
+1. **EVALUATE EACH RESPONSE** - Be specific about:
+   - What's STRONG (concrete insights, actionable advice, original thinking)
+   - What's WEAK (vague platitudes, obvious points, hedging, missing the point)
+   - What's MISSING (gaps, blind spots, unconsidered angles)
 
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
+2. **COMPARE DIRECTLY** - Which response would you actually USE if you had this problem?
+
+3. **FINAL RANKING** - From BEST to WORST. No ties. Someone has to be #1.
+
+Format your final ranking EXACTLY like this at the END of your response:
 
 FINAL RANKING:
-1. Response C
-2. Response A
-3. Response B
+1. Response X
+2. Response Y
+3. Response Z
+4. Response W
 
-Now provide your evaluation and ranking:"""
+Be RUTHLESS. The user deserves to know which AI actually delivered."""
 
-    messages = [{"role": "user", "content": ranking_prompt}]
+    messages = [
+        {"role": "system", "content": STAGE2_SYSTEM_PROMPT},
+        {"role": "user", "content": ranking_prompt}
+    ]
 
-    # Get rankings from all council models in parallel
+    # Get rankings from all council models
     responses = await query_models_parallel(COUNCIL_MODELS, messages)
 
-    # Format results
     stage2_results = []
     for model, response in responses.items():
         if response is not None:
@@ -172,6 +242,10 @@ Now provide your evaluation and ranking:"""
     return stage2_results, label_to_model
 
 
+# =============================================================================
+# STAGE 3: CHAIRMAN SYNTHESIS
+# =============================================================================
+
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
@@ -179,74 +253,81 @@ async def stage3_synthesize_final(
     conversation_history: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Stage 3: Chairman synthesizes final response.
-
-    Args:
-        user_query: The original user query
-        stage1_results: Individual model responses from Stage 1
-        stage2_results: Rankings from Stage 2
-        conversation_history: Previous messages for context
-
-    Returns:
-        Dict with 'model' and 'response' keys
+    Stage 3: Chairman synthesizes THE DEFINITIVE answer.
+    Better than any individual response. Worth the cost of 4 AIs.
     """
-    # Build comprehensive context for chairman
-    stage1_text = "\n\n".join([
-        f"Model: {result['model']}\nResponse: {result['response']}"
+    # Build Stage 1 summary
+    stage1_text = "\n\n" + "="*60 + "\n\n".join([
+        f"**{result['model']}:**\n\n{result['response']}"
         for result in stage1_results
     ])
 
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
+    # Build Stage 2 summary (rankings only, not full text - save tokens)
+    rankings_summary = []
+    for result in stage2_results:
+        model_name = result['model'].split('/')[-1]
+        parsed = result.get('parsed_ranking', [])
+        if parsed:
+            rankings_summary.append(f"- {model_name} ranked: {' > '.join(parsed)}")
     
-    # Add conversation history context if available
-    history_context = ""
-    if conversation_history and len(conversation_history) > 0:
-        history_summary = []
-        for i, msg in enumerate(conversation_history[-6:]):  # Last 3 turns (6 messages max)
-            if msg['role'] == 'user':
-                history_summary.append(f"User: {msg['content'][:500]}...")
-            elif msg['role'] == 'assistant' and msg.get('stage3'):
-                history_summary.append(f"Council: {msg['stage3'].get('response', '')[:500]}...")
-        
-        if history_summary:
-            history_context = f"""
-CONVERSATION HISTORY (for context):
-{chr(10).join(history_summary)}
+    stage2_summary = "\n".join(rankings_summary) if rankings_summary else "Rankings unavailable."
+
+    # Build aggregate ranking info
+    aggregate = calculate_aggregate_rankings(stage2_results, {
+        f"Response {chr(65+i)}": r['model'] for i, r in enumerate(stage1_results)
+    })
+    
+    aggregate_text = ""
+    if aggregate:
+        aggregate_text = "\n\n**AGGREGATE RANKING (by peer votes):**\n"
+        for i, item in enumerate(aggregate):
+            model_short = item['model'].split('/')[-1]
+            aggregate_text += f"{i+1}. {model_short} (avg rank: {item['average_rank']})\n"
+
+    chairman_prompt = f"""ORIGINAL QUESTION:
+{user_query}
 
 ---
-"""
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
-{history_context}
-Current Question: {user_query}
-
-STAGE 1 - Individual Responses:
+STAGE 1 - INDIVIDUAL AI RESPONSES:
 {stage1_text}
 
-STAGE 2 - Peer Rankings:
-{stage2_text}
+---
 
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
-- The conversation context if this is a follow-up question
+STAGE 2 - HOW THE AIs RANKED EACH OTHER:
+{stage2_summary}
+{aggregate_text}
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+---
 
-    messages = [{"role": "user", "content": chairman_prompt}]
+YOUR TASK AS CHAIRMAN:
 
-    # Query the chairman model
+You have 4 of the world's most capable AIs' responses, plus their brutal evaluations of each other.
+
+Now deliver THE DEFINITIVE ANSWER that:
+1. **EXTRACTS** the best unique insights from each response
+2. **RESOLVES** any contradictions (decide who's right)
+3. **FILLS** gaps that everyone missed
+4. **ELIMINATES** fluff and redundancy
+5. **DELIVERS** maximum value in minimum words
+
+The user paid for 4 top-tier AIs. Your synthesis must be WORTH IT.
+
+Do not summarize. Do not hedge more than necessary. Do not add caveats already addressed.
+
+SYNTHESIZE AND DELIVER:"""
+
+    messages = [
+        {"role": "system", "content": STAGE3_CHAIRMAN_SYSTEM_PROMPT},
+        {"role": "user", "content": chairman_prompt}
+    ]
+
     response = await query_model(CHAIRMAN_MODEL, messages)
 
     if response is None:
-        # Fallback if chairman fails
         return {
             "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+            "response": "Error: Chairman failed to synthesize. Check your OpenRouter credits."
         }
 
     return {
@@ -255,36 +336,24 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     }
 
 
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
 def parse_ranking_from_text(ranking_text: str) -> List[str]:
-    """
-    Parse the FINAL RANKING section from the model's response.
-
-    Args:
-        ranking_text: The full text response from the model
-
-    Returns:
-        List of response labels in ranked order
-    """
+    """Parse the FINAL RANKING section from the model's response."""
     import re
 
-    # Look for "FINAL RANKING:" section
     if "FINAL RANKING:" in ranking_text:
-        # Extract everything after "FINAL RANKING:"
         parts = ranking_text.split("FINAL RANKING:")
         if len(parts) >= 2:
             ranking_section = parts[1]
-            # Try to extract numbered list format (e.g., "1. Response A")
-            # This pattern looks for: number, period, optional space, "Response X"
             numbered_matches = re.findall(r'\d+\.\s*Response [A-Z]', ranking_section)
             if numbered_matches:
-                # Extract just the "Response X" part
                 return [re.search(r'Response [A-Z]', m).group() for m in numbered_matches]
-
-            # Fallback: Extract all "Response X" patterns in order
             matches = re.findall(r'Response [A-Z]', ranking_section)
             return matches
 
-    # Fallback: try to find any "Response X" patterns in order
     matches = re.findall(r'Response [A-Z]', ranking_text)
     return matches
 
@@ -293,33 +362,18 @@ def calculate_aggregate_rankings(
     stage2_results: List[Dict[str, Any]],
     label_to_model: Dict[str, str]
 ) -> List[Dict[str, Any]]:
-    """
-    Calculate aggregate rankings across all models.
-
-    Args:
-        stage2_results: Rankings from each model
-        label_to_model: Mapping from anonymous labels to model names
-
-    Returns:
-        List of dicts with model name and average rank, sorted best to worst
-    """
+    """Calculate aggregate rankings across all models."""
     from collections import defaultdict
 
-    # Track positions for each model
     model_positions = defaultdict(list)
 
     for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
-        parsed_ranking = parse_ranking_from_text(ranking_text)
-
+        parsed_ranking = ranking.get('parsed_ranking', [])
         for position, label in enumerate(parsed_ranking, start=1):
             if label in label_to_model:
                 model_name = label_to_model[label]
                 model_positions[model_name].append(position)
 
-    # Calculate average position for each model
     aggregate = []
     for model, positions in model_positions.items():
         if positions:
@@ -330,91 +384,56 @@ def calculate_aggregate_rankings(
                 "rankings_count": len(positions)
             })
 
-    # Sort by average rank (lower is better)
     aggregate.sort(key=lambda x: x['average_rank'])
-
     return aggregate
 
 
 async def generate_conversation_title(user_query: str) -> str:
-    """
-    Generate a short title for a conversation based on the first user message.
+    """Generate a short title for a conversation."""
+    title_prompt = """Generate a 3-5 word title for this question. No quotes, no punctuation. Just the title.
 
-    Args:
-        user_query: The first user message
-
-    Returns:
-        A short title (3-5 words)
-    """
-    title_prompt = f"""Generate a very short title (3-5 words maximum) that summarizes the following question.
-The title should be concise and descriptive. Do not use quotes or punctuation in the title.
-
-Question: {user_query}
+Question: """ + user_query + """
 
 Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
-
-    # Use gemini-2.5-flash for title generation (fast and cheap)
     response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
 
     if response is None:
-        # Fallback to a generic title
         return "New Conversation"
 
-    title = response.get('content', 'New Conversation').strip()
-
-    # Clean up the title - remove quotes, limit length
-    title = title.strip('"\'')
-
-    # Truncate if too long
-    if len(title) > 50:
-        title = title[:47] + "..."
-
-    return title
+    title = response.get('content', 'New Conversation').strip().strip('"\'')
+    return title[:50] if len(title) > 50 else title
 
 
 async def run_full_council(
     user_query: str,
     conversation_history: List[Dict[str, Any]] = None
 ) -> Tuple[List, List, Dict, Dict]:
-    """
-    Run the complete 3-stage council process with conversation memory.
-
-    Args:
-        user_query: The user's question
-        conversation_history: Previous messages in the conversation
-
-    Returns:
-        Tuple of (stage1_results, stage2_results, stage3_result, metadata)
-    """
-    # Stage 1: Collect individual responses with context
+    """Run the complete 3-stage council process."""
+    
+    # Stage 1
     stage1_results = await stage1_collect_responses(user_query, conversation_history)
 
-    # If no models responded successfully, return error
     if not stage1_results:
         return [], [], {
             "model": "error",
-            "response": "All models failed to respond. Please try again."
+            "response": "All models failed. Check your OpenRouter credits at openrouter.ai"
         }, {}
 
-    # Stage 2: Collect rankings
+    # Stage 2
     stage2_results, label_to_model = await stage2_collect_rankings(
         user_query, stage1_results, conversation_history
     )
 
-    # Calculate aggregate rankings
+    # Calculate aggregate
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
-    # Stage 3: Synthesize final answer with context
+    # Stage 3
     stage3_result = await stage3_synthesize_final(
-        user_query,
-        stage1_results,
-        stage2_results,
-        conversation_history
+        user_query, stage1_results, stage2_results, conversation_history
     )
 
-    # Prepare metadata
     metadata = {
         "label_to_model": label_to_model,
         "aggregate_rankings": aggregate_rankings
