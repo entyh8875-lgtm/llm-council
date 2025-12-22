@@ -9,13 +9,17 @@ import uuid
 import json
 import asyncio
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load .env from project root
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
-from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+# Add parent directory to path for imports when running directly
+sys.path.insert(0, os.path.dirname(__file__))
+
+import storage
+from council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
 
