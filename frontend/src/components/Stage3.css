@@ -4,14 +4,54 @@
   box-shadow: 0 0 30px rgba(63, 185, 80, 0.1);
 }
 
+.stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .stage3 .stage-title {
   color: var(--accent-success);
+  margin: 0;
 }
 
 .stage3 .stage-title::before {
   content: '✓';
   background: var(--gradient-success);
   font-size: 14px;
+}
+
+/* Copy Button in Stage 3 */
+.stage3 .copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(63, 185, 80, 0.1);
+  border: 1px solid var(--accent-success);
+  border-radius: var(--radius-md);
+  color: var(--accent-success);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.stage3 .copy-btn:hover {
+  background: rgba(63, 185, 80, 0.2);
+  transform: translateY(-1px);
+}
+
+.stage3 .copy-btn.copied {
+  background: var(--accent-success);
+  color: #fff;
+}
+
+.stage3 .copy-btn svg {
+  flex-shrink: 0;
 }
 
 .final-response {
