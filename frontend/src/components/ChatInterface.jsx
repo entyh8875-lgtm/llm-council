@@ -93,6 +93,14 @@ export default function ChatInterface({
     );
   }
 
+  // Helper to check if a stage is actively loading (not just has loading flag)
+  // A stage is loading ONLY if loading flag is true AND data hasn't arrived yet
+  const isStageLoading = (msg, stage) => {
+    const loadingFlag = msg.loading?.[stage];
+    const hasData = stage === 'stage1' ? msg.stage1 : stage === 'stage2' ? msg.stage2 : msg.stage3;
+    return loadingFlag && !hasData;
+  };
+
   return (
     <div className="chat-interface" data-testid="chat-interface">
       <div className="messages-container">
@@ -117,23 +125,23 @@ export default function ChatInterface({
                 <div className="assistant-message">
                   <div className="message-label">LLM Council</div>
 
-                  {/* Stage 1 */}
-                  {msg.loading?.stage1 && (
+                  {/* Stage 1 - Show loading ONLY if no data yet */}
+                  {isStageLoading(msg, 'stage1') && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
                       <span>Stage 1: Collecting individual responses...</span>
                     </div>
                   )}
-                  {msg.stage1 && <Stage1 responses={msg.stage1} />}
+                  {msg.stage1 && msg.stage1.length > 0 && <Stage1 responses={msg.stage1} />}
 
-                  {/* Stage 2 */}
-                  {msg.loading?.stage2 && (
+                  {/* Stage 2 - Show loading ONLY if no data yet */}
+                  {isStageLoading(msg, 'stage2') && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
                       <span>Stage 2: Models ranking each other...</span>
                     </div>
                   )}
-                  {msg.stage2 && (
+                  {msg.stage2 && msg.stage2.length > 0 && (
                     <Stage2
                       rankings={msg.stage2}
                       labelToModel={msg.metadata?.label_to_model}
@@ -141,8 +149,8 @@ export default function ChatInterface({
                     />
                   )}
 
-                  {/* Stage 3 */}
-                  {msg.loading?.stage3 && (
+                  {/* Stage 3 - Show loading ONLY if no data yet */}
+                  {isStageLoading(msg, 'stage3') && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
                       <span>Stage 3: Synthesizing final answer...</span>
