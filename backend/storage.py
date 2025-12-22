@@ -5,7 +5,14 @@ import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
-from .config import DATA_DIR
+import sys
+
+# Handle both relative and direct imports
+sys.path.insert(0, os.path.dirname(__file__))
+try:
+    from .config import DATA_DIR
+except ImportError:
+    from config import DATA_DIR
 
 
 def ensure_data_dir():
